@@ -1,66 +1,51 @@
-name: SanicDNS Scan
+name: SanicDNS CI
 
 on:
   push:
     paths:
       - 'subdomains.txt'
       - 'resolvers.txt'
+      - '.github/workflows/sanicdns.yml'
   workflow_dispatch:
 
 jobs:
-  build-and-resolve:
+  build-and-run:
+    name: Build & Run SanicDNS
     runs-on: ubuntu-latest
-
     steps:
-      # 1. Grab your code (including subdomains.txt & resolvers.txt)
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v3
 
-      # 2. Install all prerequisites in one go
-      - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y \
-          build-essential \
-          cmake \
-          ninja-build \
-          python3 \
-          libelf-dev \
-          dpdk \
-          dpdk-dev \
-          libncurses5-dev \
-          liburing-dev \
-          software-properties-common \
-          linux-headers-generic \
-          libbpf-dev \
-          libc6-dev \
-          libc6-dev-i386 \
-          libxdp-dev \
-          clang-17
-
-      # 3. Clone & compile SanicDNS
-      - name: Clone sanicdns & build
+      - name: Install system dependencies
+        shell: bash
         run: |
-          git clone --recursive https://github.com/hadriansecurity/sanicdns.git
-          cd sanicdns
-          mkdir -p build
-          cmake -B build \
-            -DCMAKE_GENERATOR=Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=ci/clang-toolchain.cmake \
-            -DNIC_TYPE=AF_XDP
-          ninja -C build
+          curl -sSL https://raw.githubusercontent.com/hadriansecurity/sanicdns/main/install.sh | sudo bash
 
-      # 4. Run the scanner against your input lists
-      - name: Run SanicDNS
+      - name: Allocate hugepages (1 GB)
         run: |
-          # assumes subdomains.txt & resolvers.txt are in the repo root
-          ./sanicdns/build/sanicdns \
-            -d subdomains.txt \
-            -r resolvers.txt \
-            -o sanicdns-results.txt
+          # best-effort; if dpdk-hugepages.py isn't on PATH this will fail harmlessly
+          sudo dpdk-hugepages.py --setup 1G || true
 
-      # 5. Upload the scan output for later inspection
-      - name: Upload results
+      - name: Verify installation
+        run: |
+          which sanicdns
+          sanicdns --help
+
+      - name: Run SanicDNS against your lists
+        run: |
+          sudo sanicdns \
+            -i subdomains.txt \
+            --postfix .navy.mil \
+            -r 2000 \
+            -c 10000 \
+            --resolvers resolvers.txt \
+            -o out.txt \ 
+            --num-retries 15   
+
+      - name: Upload logs and output
         uses: actions/upload-artifact@v3
         with:
           name: sanicdns-results
-          path: sanicdns-results.txt
+          path: |
+            out.txt
+            
