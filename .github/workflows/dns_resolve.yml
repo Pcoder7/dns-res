@@ -43,7 +43,7 @@ jobs:
             --num-retries 15   
 
       - name: Upload logs and output
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sanicdns-results
           path: |
