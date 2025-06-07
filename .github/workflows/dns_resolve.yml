@@ -29,8 +29,7 @@ jobs:
       - name: Verify installation
         run: |
           which sanicdns
-          sanicdns --help
-
+          
       - name: Run SanicDNS against your lists
         run: |
           sudo sanicdns \
