@@ -208,13 +208,13 @@ jobs:
           echo "  Output → $OUT_FILE"
           export TERM=xterm
           sudo sanicdns \
-            -i "$CHUNK" \
+            -i "$CHUNK_FILE" \
             --postfix ".$DOMAIN" \
             -r 5000 \
             -c 20000 \
             --resolvers resolvers.txt \
             -l "$LOG_FILE" \
-            -o "$OUTDIR/out.txt" \
+            -o "$OUT_FILE" \
             -w 4 \
             --num-retries 10 \
             -t 7000
@@ -237,8 +237,10 @@ jobs:
           path: |
             ${{ env.TEMP_OUT_DIR_FOR_ARTIFACT }}/results_${{ env.CHUNK_BASENAME_FOR_ARTIFACT }}.txt
           retention-days: 1
-          
+  
   aggregate_results:
+    # Always run this job even if some bruteforce jobs fail
+    if: always()
     needs: [prepare_matrix, bruteforce]
     runs-on: ubuntu-latest
     container:
@@ -263,38 +265,47 @@ jobs:
           DOMAIN="${{ matrix.domain_from_prepare_matrix }}"
           SAFE=$(echo "$DOMAIN" | tr '.' '_')
           OUT_REPO_DIR="results/$SAFE"
-          TMP_DIR="temp_sanicdns/$SAFE"
+          TMP_DIR="temp_sanicdns_consolidated/$SAFE"
           mkdir -p "$OUT_REPO_DIR" "$TMP_DIR"
           echo "DOMAIN=$DOMAIN"             >> $GITHUB_ENV
           echo "SAFE=$SAFE"                 >> $GITHUB_ENV
           echo "OUT_REPO_DIR=$OUT_REPO_DIR" >> $GITHUB_ENV
           echo "TMP_DIR=$TMP_DIR"           >> $GITHUB_ENV
+
       - name: Download all SanicDNS artifacts
         uses: actions/download-artifact@v4
-        # no name → fetches all artifacts
+        with:
+          path: temp_artifacts # Download all artifacts into a specific directory
 
       - name: Consolidate artifacts for ${{ env.DOMAIN }}
         run: |
-          echo "Gathering artifacts for ${DOMAIN} (safe: ${SAFE})"
-          for dir in sanicdns_${SAFE}_*; do
-            [ -d "$dir" ] && cp -n "$dir"/out.txt "${TMP_DIR}/"
-          done
+          echo "Gathering artifacts for domain '${DOMAIN}' (safe name: '${SAFE}')"
+          # The loop now correctly looks for 'artifact_safename_*'
+          # It now correctly copies 'results_*.txt' files
+          find temp_artifacts/artifact_${SAFE}_* -type f -name 'results_*.txt' -exec cp {} "${TMP_DIR}/" \;
+          
+          echo "Consolidated files in ${TMP_DIR}:"
           ls -lA "$TMP_DIR"
+
       - name: Aggregate SanicDNS results
         run: |
           mkdir -p "${OUT_REPO_DIR}"
-          if compgen -G "${TMP_DIR}/out.txt" > /dev/null; then
-            # Merge all out.txt files into one deduped list
-            cat "${TMP_DIR}/out.txt" | sort -u > "${OUT_REPO_DIR}/sanicdns_results.txt"
+          # The glob now correctly looks for all files in the temp dir
+          if [ -n "$(find "${TMP_DIR}" -maxdepth 1 -name '*.txt' -print -quit)" ]; then
+            echo "Aggregating results..."
+            # Merge all result files into one deduped list
+            cat "${TMP_DIR}"/*.txt | sort -u > "${OUT_REPO_DIR}/sanicdns_results.txt"
           else
-            echo "# No SanicDNS output for ${DOMAIN}" > "${OUT_REPO_DIR}/sanicdns_results.txt"
+            echo "# No SanicDNS output found for ${DOMAIN}" > "${OUT_REPO_DIR}/sanicdns_results.txt"
           fi
+          echo "Final aggregated file:"
+          cat "${OUT_REPO_DIR}/sanicdns_results.txt" | head
+
       - name: Upload aggregated results
         uses: actions/upload-artifact@v4
         with:
-          name: sanicdns_results_${{ matrix.domain_from_prepare_matrix }}
-          path: |
-            ${{ env.OUT_REPO_DIR }}/sanicdns_results.txt
+          name: aggregated_results_${{ env.SAFE }}
+          path: ${{ env.OUT_REPO_DIR }}/sanicdns_results.txt
           
             
             
