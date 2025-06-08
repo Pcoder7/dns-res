@@ -206,6 +206,8 @@ jobs:
           mkdir -p "$TEMP_OUT_DIR_FOR_ARTIFACT"
 
           OUT_FILE="$TEMP_OUT_DIR_FOR_ARTIFACT/results_${CHUNK_BASENAME_FOR_ARTIFACT}.txt"
+          LOG_FILE="$TEMP_OUT_DIR_FOR_ARTIFACT/log_${CHUNK_BASENAME_FOR_ARTIFACT}.txt"
+
 
           echo "⇢ Running SanicDNS on $DOMAIN with $CHUNK_FILE"
           echo "  Output → $OUT_FILE"
