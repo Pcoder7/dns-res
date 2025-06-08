@@ -177,14 +177,38 @@ jobs:
         run: |
           which sanicdns
           
-      - name: Run SanicDNS against your lists
+
         run: |
           DOMAIN="${{ matrix.pair.domain }}"
-          CHUNK_PATH="${{ matrix.pair.chunk }}"
-          SAFE_DOMAIN=$(echo "$DOMAIN" | tr '.' '_')
-          CHUNK_BASENAME="${CHUNK_PATH##*/}"
-          OUTDIR="sanicdns_${SAFE_DOMAIN}_${CHUNK_BASENAME}"
-          mkdir -p "$OUTDIR"
+          CHUNK_FILE="${{ matrix.pair.chunk }}"
+
+          # Verify artifacts downloaded correctly
+          if [ ! -d "chunks" ]; then
+            echo "Error: 'chunks' directory not found after artifact download!"
+            ls -A .
+            exit 1
+          fi
+          if [ ! -f "$CHUNK_FILE" ]; then
+            echo "Error: Chunk file '$CHUNK_FILE' not found after artifact download!"
+            ls -A chunks/
+            exit 1
+          fi
+          if [ ! -f "resolvers.txt" ]; then
+            echo "Error: resolvers.txt not found after artifact download!"
+            ls -A .
+            exit 1
+          fi
+
+          # Same names as you had in PureDNS
+          D_FILENAME_FOR_ARTIFACT=$(echo "$DOMAIN" | tr '.' '_')
+          CHUNK_BASENAME_FOR_ARTIFACT=$(basename "$CHUNK_FILE")
+          TEMP_OUT_DIR_FOR_ARTIFACT="sanicdns_temp_output_for_artifact"
+          mkdir -p "$TEMP_OUT_DIR_FOR_ARTIFACT"
+
+          OUT_FILE="$TEMP_OUT_DIR_FOR_ARTIFACT/results_${CHUNK_BASENAME_FOR_ARTIFACT}.txt"
+
+          echo "⇢ Running SanicDNS on $DOMAIN with $CHUNK_FILE"
+          echo "  Output → $OUT_FILE"
           sudo sanicdns \
             -i "$CHUNK" \
             --postfix ".$DOMAIN" \
@@ -196,20 +220,24 @@ jobs:
             --num-retries 10 \
             -t 7000
         
-          echo "OUTDIR=$OUTDIR"             >> $GITHUB_ENV
-          echo "SAFE_DOMAIN=$SAFE_DOMAIN"   >> $GITHUB_ENV
-          echo "CHUNK_BASENAME=$CHUNK_BASENAME" >> $GITHUB_ENV
-      
-      - name: Debug OUTDIR contents
-        run: |
-          echo "Uploading from $OUTDIR"
-          ls -l "$OUTDIR"
+          # Ensure the output file exists even if sanicdns wrote nothing
+          if [ ! -f "$OUT_FILE" ]; then
+            echo "No output found—creating empty $OUT_FILE"
+            touch "$OUT_FILE"
+          fi
 
-      - name: Upload SanicDNS results
+          # Export for upload step (unchanged)
+          echo "D_FILENAME_FOR_ARTIFACT=$D_FILENAME_FOR_ARTIFACT"                 >> $GITHUB_ENV
+          echo "CHUNK_BASENAME_FOR_ARTIFACT=$CHUNK_BASENAME_FOR_ARTIFACT"         >> $GITHUB_ENV
+          echo "TEMP_OUT_DIR_FOR_ARTIFACT=$TEMP_OUT_DIR_FOR_ARTIFACT"             >> $GITHUB_ENV
+
+      - name: Upload individual chunk results
         uses: actions/upload-artifact@v4
         with:
-          name: sanicdns_${{ env.SAFE_DOMAIN }}_${{ env.CHUNK_BASENAME }}
-          path: ${{ env.OUTDIR }}/out.txt
+          name: artifact_${{ env.D_FILENAME_FOR_ARTIFACT }}_${{ env.CHUNK_BASENAME_FOR_ARTIFACT }}
+          path: |
+            ${{ env.TEMP_OUT_DIR_FOR_ARTIFACT }}/results_${{ env.CHUNK_BASENAME_FOR_ARTIFACT }}.txt
+        retention-days: 1
           
   aggregate_results:
     needs: [prepare_matrix, bruteforce]
