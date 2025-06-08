@@ -1,12 +1,11 @@
 name: SanicDNS CI
 
 on:
-  push:
-    paths:
-      - 'subdomains.txt'
-      - 'resolvers.txt'
-      - '.github/workflows/sanicdns.yml'
   workflow_dispatch:
+
+permissions:
+  contents: write
+  
 
 jobs:
   build-and-run:
@@ -45,12 +44,12 @@ jobs:
           sudo sanicdns \
             -i subdomains.txt \
             --postfix .navy.mil \
-            -r 8000 \
-            -c 20000 \
+            -r 3000 \
+            -c 5000 \
             --resolvers resolvers.txt \
             -o out.txt \
             -w 4 \
-            --num-retries 3 \
+            --num-retries 15 \
             -t 3000
  
 
