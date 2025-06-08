@@ -209,12 +209,14 @@ jobs:
 
           echo "⇢ Running SanicDNS on $DOMAIN with $CHUNK_FILE"
           echo "  Output → $OUT_FILE"
+          export TERM=xterm
           sudo sanicdns \
             -i "$CHUNK" \
             --postfix ".$DOMAIN" \
             -r 5000 \
             -c 20000 \
             --resolvers resolvers.txt \
+            -l "$LOG_FILE" \
             -o "$OUTDIR/out.txt" \
             -w 4 \
             --num-retries 10 \
@@ -224,8 +226,9 @@ jobs:
           if [ ! -f "$OUT_FILE" ]; then
             echo "No output found—creating empty $OUT_FILE"
             touch "$OUT_FILE"
+            
           fi
-
+          [ -f "$LOG_FILE" ]   || touch "$LOG_FILE"
           # Export for upload step (unchanged)
           echo "D_FILENAME_FOR_ARTIFACT=$D_FILENAME_FOR_ARTIFACT"                 >> $GITHUB_ENV
           echo "CHUNK_BASENAME_FOR_ARTIFACT=$CHUNK_BASENAME_FOR_ARTIFACT"         >> $GITHUB_ENV
