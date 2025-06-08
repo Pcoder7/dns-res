@@ -38,8 +38,9 @@ jobs:
             -r 2000 \
             -c 10000 \
             --resolvers resolvers.txt \
-            -o out.txt \ 
-            --num-retries 15   
+            -o out.txt \
+            --num-retries 15
+ 
 
       - name: Upload logs and output
         uses: actions/upload-artifact@v4
