@@ -46,7 +46,7 @@ jobs:
             -c 10000 \
             --resolvers resolvers.txt \
             -o out.txt \
-            -w 4 \
+            -w 1 \
             --num-retries 15
  
 
