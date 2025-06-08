@@ -45,7 +45,7 @@ jobs:
           sudo sanicdns \
             -i majestic_million.txt \
             -r 5000 \
-            -c 10000 \
+            -c 20000 \
             -l log.txt \
             --resolvers resolvers.txt \
             -o out.txt \
