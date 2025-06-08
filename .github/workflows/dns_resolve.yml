@@ -12,6 +12,8 @@ jobs:
   build-and-run:
     name: Build & Run SanicDNS
     runs-on: ubuntu-latest
+    env:
+      TERM: xterm    
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
@@ -39,6 +41,7 @@ jobs:
           
       - name: Run SanicDNS against your lists
         run: |
+          export TERM=xterm         
           sudo sanicdns \
             -i subdomains.txt \
             --postfix .navy.mil \
