@@ -45,12 +45,13 @@ jobs:
           sudo sanicdns \
             -i subdomains.txt \
             --postfix .navy.mil \
-            -r 10000 \
+            -r 8000 \
             -c 20000 \
             --resolvers resolvers.txt \
             -o out.txt \
             -w 4 \
-            --num-retries 15
+            --num-retries 3 \
+            -t 3000
  
 
       - name: Upload logs and output
