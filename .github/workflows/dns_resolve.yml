@@ -190,10 +190,10 @@ jobs:
             -r 5000 \
             -c 20000 \
             --resolvers resolvers.txt \
-            -o "$OUTDIR/out.txt \
+            -o "$OUTDIR/out.txt" \
             -w 4 \
             --num-retries 10 \
-            -t 5000
+            -t 7000
  
 
       - name: Upload SanicDNS results
