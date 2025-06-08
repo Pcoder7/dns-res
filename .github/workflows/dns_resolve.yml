@@ -1,161 +1,23 @@
-name: SanicDNS CI
+
 
 on:
+  push:
+    paths:
+      - 'subdomains.txt'
+      - 'resolvers.txt'
+      - '.github/workflows/sanicdns.yml'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  
-env:
-  LINES_PER_CHUNK: 500000
-  COMBINED_WORDLIST: "best-wordlist-9996122_filter.txt"
-
 jobs:
-  prepare_matrix:
+  build-and-run:
+    name: Build & Run SanicDNS
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/pcoder7/spider-puredns-actions:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
-    outputs:
-      matrix: ${{ steps.set_matrix.outputs.matrix }}
-      unique_domains_json: ${{ steps.set_matrix.outputs.unique_domains_json }}
-      all_chunk_basenames_json: ${{ steps.set_matrix.outputs.all_chunk_basenames_json }}
+    env:
+      TERM: xterm    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          # Fetch full Git history so previous commits are available for comparison
-          fetch-depth: 0   
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Cache Go modules & binaries
-        uses: actions/cache@v3
-        with:
-          path: |
-            $HOME/go/pkg/mod
-            ~/.cache/go-build
-            $HOME/go/bin
-          key: ${{ runner.os }}-go-cache-${{ github.ref_name }}
-          restore-keys: |
-            ${{ runner.os }}-go-cache-
-         
-
-      - name: Cache Wordlists
-        uses: actions/cache@v3
-        with:
-          path: |
-            best-wordlist-9996122.txt
-            seclistes-dns-7110368.txt
-            resolvers.txt
-            resolvers-trusted.txt
-          key: wordlists-cache-v2-${{ hashFiles('best-wordlist-9996122.txt','seclistes-dns-7110368.txt','resolvers.txt','resolvers-trusted.txt') }}
-          restore-keys: wordlists-cache-v2-
-
-      - name: Fetch wordlists
-        run: |
-          # Download only if not cached already
-          if [ ! -f best-wordlist-9996122.txt ]; then
-            wget -qO best-wordlist-9996122.txt \
-              https://github.com/Pcoder7/All-In-One-DNS-Wordlist/raw/refs/heads/main/best-wordlist-9996122.txt
-          fi
-          if [ ! -f seclistes-dns-7110368.txt ]; then
-            wget -qO seclistes-dns-7110368.txt \
-              https://github.com/Pcoder7/All-In-One-DNS-Wordlist/raw/refs/heads/main/seclistes-dns-7110368.txt
-          fi
-          if [ ! -f resolvers.txt ]; then
-              wget -qO resolvers.txt \
-              https://raw.githubusercontent.com/rix4uni/resolvers/refs/heads/main/resolvers.txt
-              echo "resolvers.txt is downloaded"
-          fi
-          if [ ! -f resolvers-trusted.txt ]; then
-              wget -qO resolvers-trusted.txt \
-              https://raw.githubusercontent.com/and0x00/resolvers.txt/refs/heads/main/resolvers.txt
-              echo "resolvers-trusted.txt is downloaded"
-          fi          
-
-      - name: Build filter_wordlist tool
-        run: |
-          go build -o filter_wordlist filter_wordlist.go
-          chmod +x filter_wordlist
-
-      - name: Cache filtered wordlists
-        uses: actions/cache@v3
-        with:
-          path: |
-            best-wordlist-9996122_filter.txt
-            seclistes-dns-7110368_filter.txt
-          key: filter-wordlists-${{ hashFiles('best-wordlist-9996122_filter.txt','seclistes-dns-7110368_filter.txt') }}
-          restore-keys: filter-wordlists-
-
-      - name: Filter and combine wordlists
-        run: |
-          if [ -f best-wordlist-9996122_filter.txt ]; then
-            echo "Using cached filter."
-          else
-            ./filter_wordlist best-wordlist-9996122.txt > best-wordlist-9996122_filter.txt
-            ./filter_wordlist seclistes-dns-7110368.txt > seclistes-dns-7110368_filter.txt
-            cat seclistes-dns-7110368_filter.txt | anew -q best-wordlist-9996122_filter.txt > added-lines.txt
-          fi
-
-      - name: Split combined wordlist into chunks
-        run: |
-          mkdir -p chunks
-          split -l $LINES_PER_CHUNK -a 2 --numeric-suffixes=1 "$COMBINED_WORDLIST" chunks/chunk_
-          ls chunks | wc -l
-
-      - name: Build matrix JSON and define outputs
-        id: set_matrix
-        run: |
-          doms_jq=$(jq -R -s -c 'split("\n")|map(select(length>0))' domains.txt)
-          chunks_jq=$(ls chunks | jq -R -s -c 'split("\n")|map(select(length>0))')
-          full=$(jq -n --argjson D "$doms_jq" --argjson C "$chunks_jq" \
-            '[ $D[] as $d | $C[] as $c | {domain:$d,chunk:"chunks/\($c)"} ]')
-          echo "matrix<<EOF" >> $GITHUB_OUTPUT
-          echo "$full" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          uniques=$(echo "$full" | jq 'map(.domain)|unique')
-          echo "unique_domains_json<<EOF" >> $GITHUB_OUTPUT
-          echo "$uniques" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "all_chunk_basenames_json<<EOF" >> $GITHUB_OUTPUT
-          echo "$chunks_jq" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Upload chunks & resolvers
-        uses: actions/upload-artifact@v4
-        with:
-          name: common-assets
-          path: |
-            chunks
-            resolvers.txt
-            resolvers-trusted.txt
-            wildcards.txt
-            massdns.txt
-          retention-days: 1
-
-  bruteforce:
-    needs: prepare_matrix
-    runs-on: ubuntu-latest
-    strategy:
-      max-parallel: 20
-      fail-fast: true
-      matrix:
-        pair: ${{ fromJson(needs.prepare_matrix.outputs.matrix) }}
-    steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v3
 
-      - name: Download common-assets
-        uses: actions/download-artifact@v4
-        with: 
-           name: common-assets
-      
       - name: Install system dependencies
         shell: bash
         run: |
@@ -167,145 +29,36 @@ jobs:
           sudo apt-get install -y ethtool
           # If eth0 doesn’t exist, adjust the interface name accordingly
           sudo ethtool -L eth0 combined 3 || true          
-
       - name: Allocate hugepages (1 GB)
         run: |
           # best-effort; if dpdk-hugepages.py isn't on PATH this will fail harmlessly
           sudo dpdk-hugepages.py --setup 2G || true
-
       - name: Verify installation
         run: |
           which sanicdns
-      
-      - name: Run SanicDNS Bruteforce on chunk
+          
+          
+      - name: Run SanicDNS against your lists
         run: |
-          DOMAIN="${{ matrix.pair.domain }}"
-          CHUNK_FILE="${{ matrix.pair.chunk }}"
-          # Verify artifacts downloaded correctly
-          if [ ! -d "chunks" ]; then
-            echo "Error: 'chunks' directory not found after artifact download!"
-            ls -A .
-            exit 1
-          fi
-          if [ ! -f "$CHUNK_FILE" ]; then
-            echo "Error: Chunk file '$CHUNK_FILE' not found after artifact download!"
-            ls -A chunks/
-            exit 1
-          fi
-          if [ ! -f "resolvers.txt" ]; then
-            echo "Error: resolvers.txt not found after artifact download!"
-            ls -A .
-            exit 1
-          fi
-          # Same names as you had in PureDNS
-          D_FILENAME_FOR_ARTIFACT=$(echo "$DOMAIN" | tr '.' '_')
-          CHUNK_BASENAME_FOR_ARTIFACT=$(basename "$CHUNK_FILE")
-          TEMP_OUT_DIR_FOR_ARTIFACT="sanicdns_temp_output_for_artifact"
-          mkdir -p "$TEMP_OUT_DIR_FOR_ARTIFACT"
-          OUT_FILE="$TEMP_OUT_DIR_FOR_ARTIFACT/results_${CHUNK_BASENAME_FOR_ARTIFACT}.txt"
-          LOG_FILE="$TEMP_OUT_DIR_FOR_ARTIFACT/log_${CHUNK_BASENAME_FOR_ARTIFACT}.txt"
-          echo "⇢ Running SanicDNS on $DOMAIN with $CHUNK_FILE"
-          echo "  Output → $OUT_FILE"
-          export TERM=xterm
+          export TERM=xterm         
+          wget https://raw.githubusercontent.com/hadriansecurity/sanicdns/main/majestic_million.txt
           sudo sanicdns \
-            -i "$CHUNK_FILE" \
-            --postfix ".$DOMAIN" \
-            -r 5000 \
-            -c 20000 \
+            -i majestic_million.txt \
+            --postfix .navy.mil \
+            -r 30000 \
+            -c 100000 \
+            -l log.txt \
             --resolvers resolvers.txt \
-            -l "$LOG_FILE" \
-            -o "$OUT_FILE" \
+            -o out.txt \
             -w 4 \
-            --num-retries 10 \
-            -t 7000
-        
-          # Ensure the output file exists even if sanicdns wrote nothing
-          if [ ! -f "$OUT_FILE" ]; then
-            echo "No output found—creating empty $OUT_FILE"
-            touch "$OUT_FILE"
-            
-          fi
-          [ -f "$LOG_FILE" ]   || touch "$LOG_FILE"
-          # Export for upload step (unchanged)
-          echo "D_FILENAME_FOR_ARTIFACT=$D_FILENAME_FOR_ARTIFACT"                 >> $GITHUB_ENV
-          echo "CHUNK_BASENAME_FOR_ARTIFACT=$CHUNK_BASENAME_FOR_ARTIFACT"         >> $GITHUB_ENV
-          echo "TEMP_OUT_DIR_FOR_ARTIFACT=$TEMP_OUT_DIR_FOR_ARTIFACT"             >> $GITHUB_ENV
-      - name: Upload individual chunk results
+            --num-retries 2 \
+            --timeout 1000
+ 
+
+      - name: Upload logs and output
         uses: actions/upload-artifact@v4
         with:
-          name: artifact_${{ env.D_FILENAME_FOR_ARTIFACT }}_${{ env.CHUNK_BASENAME_FOR_ARTIFACT }}
+          name: sanicdns-results
           path: |
-            ${{ env.TEMP_OUT_DIR_FOR_ARTIFACT }}/results_${{ env.CHUNK_BASENAME_FOR_ARTIFACT }}.txt
-          retention-days: 1
-  
-  aggregate_results:
-    # Always run this job even if some bruteforce jobs fail
-    if: always()
-    needs: [prepare_matrix, bruteforce]
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/pcoder7/spider-puredns-actions:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
-    strategy:
-      fail-fast: false
-      matrix:
-        domain_from_prepare_matrix: ${{ fromJson(needs.prepare_matrix.outputs.unique_domains_json) }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Prepare directories and key vars
-        id: prep_vars
-        run: |
-          DOMAIN="${{ matrix.domain_from_prepare_matrix }}"
-          SAFE=$(echo "$DOMAIN" | tr '.' '_')
-          OUT_REPO_DIR="results/$SAFE"
-          TMP_DIR="temp_sanicdns_consolidated/$SAFE"
-          mkdir -p "$OUT_REPO_DIR" "$TMP_DIR"
-          echo "DOMAIN=$DOMAIN"             >> $GITHUB_ENV
-          echo "SAFE=$SAFE"                 >> $GITHUB_ENV
-          echo "OUT_REPO_DIR=$OUT_REPO_DIR" >> $GITHUB_ENV
-          echo "TMP_DIR=$TMP_DIR"           >> $GITHUB_ENV
-
-      - name: Download all SanicDNS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: temp_artifacts # Download all artifacts into a specific directory
-
-      - name: Consolidate artifacts for ${{ env.DOMAIN }}
-        run: |
-          echo "Gathering artifacts for domain '${DOMAIN}' (safe name: '${SAFE}')"
-          # The loop now correctly looks for 'artifact_safename_*'
-          # It now correctly copies 'results_*.txt' files
-          find temp_artifacts/artifact_${SAFE}_* -type f -name 'results_*.txt' -exec cp {} "${TMP_DIR}/" \;
-          
-          echo "Consolidated files in ${TMP_DIR}:"
-          ls -lA "$TMP_DIR"
-
-      - name: Aggregate SanicDNS results
-        run: |
-          mkdir -p "${OUT_REPO_DIR}"
-          # The glob now correctly looks for all files in the temp dir
-          if [ -n "$(find "${TMP_DIR}" -maxdepth 1 -name '*.txt' -print -quit)" ]; then
-            echo "Aggregating results..."
-            # Merge all result files into one deduped list
-            cat "${TMP_DIR}"/*.txt | sort -u > "${OUT_REPO_DIR}/sanicdns_results.txt"
-          else
-            echo "# No SanicDNS output found for ${DOMAIN}" > "${OUT_REPO_DIR}/sanicdns_results.txt"
-          fi
-          echo "Final aggregated file:"
-          cat "${OUT_REPO_DIR}/sanicdns_results.txt" | head
-
-      - name: Upload aggregated results
-        uses: actions/upload-artifact@v4
-        with:
-          name: aggregated_results_${{ env.SAFE }}
-          path: ${{ env.OUT_REPO_DIR }}/sanicdns_results.txt
-          
-            
-            
+            out.txt
+            log.txt
