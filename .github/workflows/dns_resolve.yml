@@ -177,7 +177,7 @@ jobs:
         run: |
           which sanicdns
           
-
+      - name: Run SanicDNS Bruteforce on chunk
         run: |
           DOMAIN="${{ matrix.pair.domain }}"
           CHUNK_FILE="${{ matrix.pair.chunk }}"
@@ -237,7 +237,7 @@ jobs:
           name: artifact_${{ env.D_FILENAME_FOR_ARTIFACT }}_${{ env.CHUNK_BASENAME_FOR_ARTIFACT }}
           path: |
             ${{ env.TEMP_OUT_DIR_FOR_ARTIFACT }}/results_${{ env.CHUNK_BASENAME_FOR_ARTIFACT }}.txt
-        retention-days: 1
+          retention-days: 1
           
   aggregate_results:
     needs: [prepare_matrix, bruteforce]
