@@ -142,8 +142,6 @@ jobs:
   bruteforce:
     needs: prepare_matrix
     runs-on: ubuntu-latest
-    container:
-      image: ubuntu-latest
     strategy:
       max-parallel: 20
       fail-fast: false
@@ -190,7 +188,7 @@ jobs:
             -i "$CHUNK" \
             --postfix ".$DOMAIN" \
             -r 5000 \
-            -c 15000 \
+            -c 20000 \
             --resolvers resolvers.txt \
             -o "$OUTDIR/out.txt \
             -w 4 \
