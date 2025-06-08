@@ -44,15 +44,14 @@ jobs:
           wget https://raw.githubusercontent.com/hadriansecurity/sanicdns/main/majestic_million.txt
           sudo sanicdns \
             -i majestic_million.txt \
-            --postfix .navy.mil \
-            -r 10000 \
-            -c 80000 \
+            -r 30000 \
+            -c 100000 \
             -l log.txt \
             --resolvers resolvers.txt \
             -o out.txt \
             -w 4 \
             --num-retries 15 \
-            --timeout 15000
+            --timeout 3000
  
 
       - name: Upload logs and output
