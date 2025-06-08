@@ -6,17 +6,160 @@ on:
 permissions:
   contents: write
   
+env:
+  LINES_PER_CHUNK: 500000
+  COMBINED_WORDLIST: "best-wordlist-9996122_filter.txt"
 
 jobs:
-  build-and-run:
-    name: Build & Run SanicDNS
+  prepare_matrix:
     runs-on: ubuntu-latest
-    env:
-      TERM: xterm    
+    container:
+      image: ghcr.io/pcoder7/spider-puredns-actions:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_TOKEN }}
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+      unique_domains_json: ${{ steps.set_matrix.outputs.unique_domains_json }}
+      all_chunk_basenames_json: ${{ steps.set_matrix.outputs.all_chunk_basenames_json }}
     steps:
-      - name: Check out repository
+      - name: Checkout
+        uses: actions/checkout@v3
+        with: fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Cache Go modules & binaries
+        uses: actions/cache@v3
+        with:
+          path: |
+            $HOME/go/pkg/mod
+            ~/.cache/go-build
+            $HOME/go/bin
+          key: ${{ runner.os }}-go-cache-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-go-cache-
+         
+    
+      - name: Update & Install Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y curl git jq unzip
+
+      - name: Cache Wordlists
+        uses: actions/cache@v3
+        with:
+          path: |
+            best-wordlist-9996122.txt
+            seclistes-dns-7110368.txt
+            resolvers.txt
+            resolvers-trusted.txt
+          key: wordlists-cache-v2-${{ hashFiles('best-wordlist-9996122.txt','seclistes-dns-7110368.txt','resolvers.txt','resolvers-trusted.txt') }}
+          restore-keys: wordlists-cache-v2-
+
+      - name: Fetch wordlists
+        run: |
+          # Download only if not cached already
+          if [ ! -f best-wordlist-9996122.txt ]; then
+            wget -qO best-wordlist-9996122.txt \
+              https://github.com/Pcoder7/All-In-One-DNS-Wordlist/raw/refs/heads/main/best-wordlist-9996122.txt
+          fi
+          if [ ! -f seclistes-dns-7110368.txt ]; then
+            wget -qO seclistes-dns-7110368.txt \
+              https://github.com/Pcoder7/All-In-One-DNS-Wordlist/raw/refs/heads/main/seclistes-dns-7110368.txt
+          fi
+          if [ ! -f resolvers.txt ]; then
+              wget -qO resolvers.txt \
+              https://raw.githubusercontent.com/rix4uni/resolvers/refs/heads/main/resolvers.txt
+              echo "resolvers.txt is downloaded"
+          fi
+          if [ ! -f resolvers-trusted.txt ]; then
+              wget -qO resolvers-trusted.txt \
+              https://raw.githubusercontent.com/and0x00/resolvers.txt/refs/heads/main/resolvers.txt
+              echo "resolvers-trusted.txt is downloaded"
+          fi          
+
+      - name: Build filter_wordlist tool
+        run: |
+          go build -o filter_wordlist filter_wordlist.go
+          chmod +x filter_wordlist
+
+      - name: Cache filtered wordlists
+        uses: actions/cache@v3
+        with:
+          path: |
+            best-wordlist-9996122_filter.txt
+            seclistes-dns-7110368_filter.txt
+          key: filter-wordlists-${{ hashFiles('best-wordlist-9996122_filter.txt','seclistes-dns-7110368_filter.txt') }}
+          restore-keys: filter-wordlists-
+
+      - name: Filter and combine wordlists
+        run: |
+          if [ -f best-wordlist-9996122_filter.txt ]; then
+            echo "Using cached filter."
+          else
+            ./filter_wordlist best-wordlist-9996122.txt > best-wordlist-9996122_filter.txt
+            ./filter_wordlist seclistes-dns-7110368.txt > seclistes-dns-7110368_filter.txt
+            cat seclistes-dns-7110368_filter.txt | anew -q best-wordlist-9996122_filter.txt > added-lines.txt
+          fi
+
+      - name: Split combined wordlist into chunks
+        run: |
+          mkdir -p chunks
+          split -l $LINES_PER_CHUNK -a 2 --numeric-suffixes=1 "$COMBINED_WORDLIST" chunks/chunk_
+          ls chunks | wc -l
+
+      - name: Build matrix JSON and define outputs
+        id: set_matrix
+        run: |
+          doms_jq=$(jq -R -s -c 'split("\n")|map(select(length>0))' domains.txt)
+          chunks_jq=$(ls chunks | jq -R -s -c 'split("\n")|map(select(length>0))')
+          full=$(jq -n --argjson D "$doms_jq" --argjson C "$chunks_jq" \
+            '[ $D[] as $d | $C[] as $c | {domain:$d,chunk:"chunks/\($c)"} ]')
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$full" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          uniques=$(echo "$full" | jq 'map(.domain)|unique')
+          echo "unique_domains_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$uniques" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "all_chunk_basenames_json<<EOF" >> $GITHUB_OUTPUT
+          echo "$chunks_jq" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Upload chunks & resolvers
+        uses: actions/upload-artifact@v4
+        with:
+          name: common-assets
+          path: |
+            chunks
+            resolvers.txt
+            resolvers-trusted.txt
+            wildcards.txt
+            massdns.txt
+          retention-days: 1
+
+  bruteforce:
+    needs: prepare_matrix
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu-latest
+    strategy:
+      max-parallel: 20
+      fail-fast: false
+      matrix:
+        pair: ${{ fromJson(needs.prepare_matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Download common-assets
+        uses: actions/download-artifact@v4
+        with: name: common-assets
+      
       - name: Install system dependencies
         shell: bash
         run: |
@@ -40,23 +183,27 @@ jobs:
           
       - name: Run SanicDNS against your lists
         run: |
-          export TERM=xterm         
+          export TERM=xterm      
+          DOMAIN="${{ matrix.pair.domain }}"
+          CHUNK="${{ matrix.pair.chunk }}"
+          OUTDIR="sanicdns_${DOMAIN//./_}_${CHUNK##*/}"
+          mkdir -p "$OUTDIR"
           sudo sanicdns \
-            -i subdomains.txt \
-            --postfix .navy.mil \
-            -r 3000 \
-            -c 5000 \
+            -i "$CHUNK" \
+            --postfix ".$DOMAIN" \
+            -r 5000 \
+            -c 15000 \
             --resolvers resolvers.txt \
-            -o out.txt \
+            -o "$OUTDIR/out.txt \
             -w 4 \
-            --num-retries 15 \
-            -t 3000
+            --num-retries 10 \
+            -t 5000
  
 
-      - name: Upload logs and output
+      - name: Upload SanicDNS results
         uses: actions/upload-artifact@v4
         with:
-          name: sanicdns-results
+          name: sanicdns_${{ matrix.pair.domain }}_${{ matrix.pair.chunk }}
           path: |
-            out.txt
+            ${{ steps.run_sanicdns.outputs.OUTDIR }}/out.txt
             
