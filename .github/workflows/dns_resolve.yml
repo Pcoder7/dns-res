@@ -179,10 +179,11 @@ jobs:
           
       - name: Run SanicDNS against your lists
         run: |
-          export TERM=xterm      
           DOMAIN="${{ matrix.pair.domain }}"
-          CHUNK="${{ matrix.pair.chunk }}"
-          OUTDIR="sanicdns_${DOMAIN//./_}_${CHUNK##*/}"
+          CHUNK_PATH="${{ matrix.pair.chunk }}"
+          SAFE_DOMAIN=$(echo "$DOMAIN" | tr '.' '_')
+          CHUNK_BASENAME="${CHUNK_PATH##*/}"
+          OUTDIR="sanicdns_${SAFE_DOMAIN}_${CHUNK_BASENAME}"
           mkdir -p "$OUTDIR"
           sudo sanicdns \
             -i "$CHUNK" \
@@ -195,7 +196,9 @@ jobs:
             --num-retries 10 \
             -t 7000
         
-          echo "OUTDIR=$OUTDIR" >> $GITHUB_ENV 
+          echo "OUTDIR=$OUTDIR"             >> $GITHUB_ENV
+          echo "SAFE_DOMAIN=$SAFE_DOMAIN"   >> $GITHUB_ENV
+          echo "CHUNK_BASENAME=$CHUNK_BASENAME" >> $GITHUB_ENV
       
       - name: Debug OUTDIR contents
         run: |
@@ -205,7 +208,7 @@ jobs:
       - name: Upload SanicDNS results
         uses: actions/upload-artifact@v4
         with:
-          name: sanicdns_${{ matrix.pair.domain//./_ }}_${{ matrix.pair.chunk##*/ }}
+          name: sanicdns_${{ env.SAFE_DOMAIN }}_${{ env.CHUNK_BASENAME }}
           path: ${{ env.OUTDIR }}/out.txt
           
   aggregate_results:
