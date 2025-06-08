@@ -51,8 +51,8 @@ jobs:
             --resolvers resolvers.txt \
             -o out.txt \
             -w 4 \
-            --num-retries 2 \
-            --timeout 1000
+            --num-retries 15 \
+            --timeout 15000
  
 
       - name: Upload logs and output
