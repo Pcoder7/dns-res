@@ -45,11 +45,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-cache-
          
-    
-      - name: Update & Install Dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y curl git jq unzip
 
       - name: Cache Wordlists
         uses: actions/cache@v3
