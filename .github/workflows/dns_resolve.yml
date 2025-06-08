@@ -20,6 +20,13 @@ jobs:
         shell: bash
         run: |
           curl -sSL https://raw.githubusercontent.com/hadriansecurity/sanicdns/main/install.sh | sudo bash
+     
+      - name: Install ethtool & shrink NIC queues
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ethtool
+          # If eth0 doesn’t exist, adjust the interface name accordingly
+          sudo ethtool -L eth0 combined 1 || true          
 
       - name: Allocate hugepages (1 GB)
         run: |
