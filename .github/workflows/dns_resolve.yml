@@ -160,7 +160,8 @@ jobs:
 
       - name: Download common-assets
         uses: actions/download-artifact@v4
-        with: name: common-assets
+        with: 
+           name: common-assets
       
       - name: Install system dependencies
         shell: bash
@@ -208,4 +209,66 @@ jobs:
           name: sanicdns_${{ matrix.pair.domain }}_${{ matrix.pair.chunk }}
           path: |
             ${{ steps.run_sanicdns.outputs.OUTDIR }}/out.txt
+
+  aggregate_results:
+    needs: [prepare_matrix, bruteforce]
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/pcoder7/spider-puredns-actions:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        domain_from_prepare_matrix: ${{ fromJson(needs.prepare_matrix.outputs.unique_domains_json) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Prepare directories and key vars
+        id: prep_vars
+        run: |
+          DOMAIN="${{ matrix.domain_from_prepare_matrix }}"
+          SAFE=$(echo "$DOMAIN" | tr '.' '_')
+          OUT_REPO_DIR="results/$SAFE"
+          TMP_DIR="temp_sanicdns/$SAFE"
+          mkdir -p "$OUT_REPO_DIR" "$TMP_DIR"
+          echo "DOMAIN=$DOMAIN"             >> $GITHUB_ENV
+          echo "SAFE=$SAFE"                 >> $GITHUB_ENV
+          echo "OUT_REPO_DIR=$OUT_REPO_DIR" >> $GITHUB_ENV
+          echo "TMP_DIR=$TMP_DIR"           >> $GITHUB_ENV
+
+      - name: Download all SanicDNS artifacts
+        uses: actions/download-artifact@v4
+        # no name → fetches all artifacts
+
+      - name: Consolidate artifacts for ${{ env.DOMAIN }}
+        run: |
+          echo "Gathering artifacts for ${DOMAIN} (safe: ${SAFE})"
+          for dir in sanicdns_${SAFE}_*; do
+            [ -d "$dir" ] && cp -n "$dir"/out.txt "${TMP_DIR}/"
+          done
+          ls -lA "$TMP_DIR"
+
+      - name: Aggregate SanicDNS results
+        run: |
+          mkdir -p "${OUT_REPO_DIR}"
+          if compgen -G "${TMP_DIR}/out.txt" > /dev/null; then
+            # Merge all out.txt files into one deduped list
+            cat "${TMP_DIR}/out.txt" | sort -u > "${OUT_REPO_DIR}/sanicdns_results.txt"
+          else
+            echo "# No SanicDNS output for ${DOMAIN}" > "${OUT_REPO_DIR}/sanicdns_results.txt"
+          fi
+
+      - name: Upload aggregated results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanicdns_results_${{ matrix.domain_from_prepare_matrix }}
+          path: |
+            ${{ env.OUT_REPO_DIR }}/sanicdns_results.txt
+            
             
