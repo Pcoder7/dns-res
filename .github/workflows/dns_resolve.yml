@@ -33,7 +33,7 @@ jobs:
       - name: Allocate hugepages (1 GB)
         run: |
           # best-effort; if dpdk-hugepages.py isn't on PATH this will fail harmlessly
-          sudo dpdk-hugepages.py --setup 1G || true
+          sudo dpdk-hugepages.py --setup 2G || true
 
       - name: Verify installation
         run: |
@@ -45,11 +45,11 @@ jobs:
           sudo sanicdns \
             -i subdomains.txt \
             --postfix .navy.mil \
-            -r 2000 \
-            -c 10000 \
+            -r 10000 \
+            -c 20000 \
             --resolvers resolvers.txt \
             -o out.txt \
-            -w 2 \
+            -w 4 \
             --num-retries 15
  
 
