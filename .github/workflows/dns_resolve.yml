@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 20
-      fail-fast: false
+      fail-fast: true
       matrix:
         pair: ${{ fromJson(needs.prepare_matrix.outputs.matrix) }}
     steps:
@@ -194,14 +194,15 @@ jobs:
             -w 4 \
             --num-retries 10 \
             -t 7000
- 
+        
+          echo "OUTDIR=$OUTDIR" >> $GITHUB_ENV 
 
       - name: Upload SanicDNS results
         uses: actions/upload-artifact@v4
         with:
           name: sanicdns_${{ matrix.pair.domain }}_${{ matrix.pair.chunk }}
           path: |
-            ${{ steps.run_sanicdns.outputs.OUTDIR }}/out.txt
+            ${{ env.OUTDIR }}/out.txt
 
   aggregate_results:
     needs: [prepare_matrix, bruteforce]
