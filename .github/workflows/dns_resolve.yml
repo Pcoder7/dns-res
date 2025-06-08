@@ -176,12 +176,11 @@ jobs:
       - name: Verify installation
         run: |
           which sanicdns
-          
+      
       - name: Run SanicDNS Bruteforce on chunk
         run: |
           DOMAIN="${{ matrix.pair.domain }}"
           CHUNK_FILE="${{ matrix.pair.chunk }}"
-
           # Verify artifacts downloaded correctly
           if [ ! -d "chunks" ]; then
             echo "Error: 'chunks' directory not found after artifact download!"
@@ -198,17 +197,13 @@ jobs:
             ls -A .
             exit 1
           fi
-
           # Same names as you had in PureDNS
           D_FILENAME_FOR_ARTIFACT=$(echo "$DOMAIN" | tr '.' '_')
           CHUNK_BASENAME_FOR_ARTIFACT=$(basename "$CHUNK_FILE")
           TEMP_OUT_DIR_FOR_ARTIFACT="sanicdns_temp_output_for_artifact"
           mkdir -p "$TEMP_OUT_DIR_FOR_ARTIFACT"
-
           OUT_FILE="$TEMP_OUT_DIR_FOR_ARTIFACT/results_${CHUNK_BASENAME_FOR_ARTIFACT}.txt"
           LOG_FILE="$TEMP_OUT_DIR_FOR_ARTIFACT/log_${CHUNK_BASENAME_FOR_ARTIFACT}.txt"
-
-
           echo "⇢ Running SanicDNS on $DOMAIN with $CHUNK_FILE"
           echo "  Output → $OUT_FILE"
           export TERM=xterm
@@ -235,7 +230,6 @@ jobs:
           echo "D_FILENAME_FOR_ARTIFACT=$D_FILENAME_FOR_ARTIFACT"                 >> $GITHUB_ENV
           echo "CHUNK_BASENAME_FOR_ARTIFACT=$CHUNK_BASENAME_FOR_ARTIFACT"         >> $GITHUB_ENV
           echo "TEMP_OUT_DIR_FOR_ARTIFACT=$TEMP_OUT_DIR_FOR_ARTIFACT"             >> $GITHUB_ENV
-
       - name: Upload individual chunk results
         uses: actions/upload-artifact@v4
         with:
@@ -275,7 +269,6 @@ jobs:
           echo "SAFE=$SAFE"                 >> $GITHUB_ENV
           echo "OUT_REPO_DIR=$OUT_REPO_DIR" >> $GITHUB_ENV
           echo "TMP_DIR=$TMP_DIR"           >> $GITHUB_ENV
-
       - name: Download all SanicDNS artifacts
         uses: actions/download-artifact@v4
         # no name → fetches all artifacts
@@ -287,7 +280,6 @@ jobs:
             [ -d "$dir" ] && cp -n "$dir"/out.txt "${TMP_DIR}/"
           done
           ls -lA "$TMP_DIR"
-
       - name: Aggregate SanicDNS results
         run: |
           mkdir -p "${OUT_REPO_DIR}"
@@ -297,12 +289,12 @@ jobs:
           else
             echo "# No SanicDNS output for ${DOMAIN}" > "${OUT_REPO_DIR}/sanicdns_results.txt"
           fi
-
       - name: Upload aggregated results
         uses: actions/upload-artifact@v4
         with:
           name: sanicdns_results_${{ matrix.domain_from_prepare_matrix }}
           path: |
             ${{ env.OUT_REPO_DIR }}/sanicdns_results.txt
+          
             
             
