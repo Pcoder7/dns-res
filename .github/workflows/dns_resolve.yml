@@ -49,7 +49,7 @@ jobs:
             -l log.txt \
             --resolvers resolvers.txt \
             -o out.txt \
-            -w 3 \
+            -w 4 \
             --num-retries 10 \
             --timeout 15000
  
