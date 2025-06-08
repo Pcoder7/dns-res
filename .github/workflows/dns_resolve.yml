@@ -196,14 +196,18 @@ jobs:
             -t 7000
         
           echo "OUTDIR=$OUTDIR" >> $GITHUB_ENV 
+      
+      - name: Debug OUTDIR contents
+        run: |
+          echo "Uploading from $OUTDIR"
+          ls -l "$OUTDIR"
 
       - name: Upload SanicDNS results
         uses: actions/upload-artifact@v4
         with:
-          name: sanicdns_${{ matrix.pair.domain }}_${{ matrix.pair.chunk }}
-          path: |
-            ${{ env.OUTDIR }}/out.txt
-
+          name: sanicdns_${{ matrix.pair.domain//./_ }}_${{ matrix.pair.chunk##*/ }}
+          path: ${{ env.OUTDIR }}/out.txt
+          
   aggregate_results:
     needs: [prepare_matrix, bruteforce]
     runs-on: ubuntu-latest
